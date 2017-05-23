@@ -25,3 +25,8 @@
  - $ mkdir fuse
  - $ mkdir fuse_temp
  - learn how to compile and run from readme.pdf
+
+ ## learn how to use libfuse
+
+  - 2 simple but useful demo: http://ouonline.net/building-your-own-fs-with-fuse-1
+  - another demo as well as a tutorial: https://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/
