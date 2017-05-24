@@ -4,6 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // static const char *filepath = "/file";
 // static const char *filename = "file";
@@ -79,8 +80,61 @@ static int open_callback(const char *path, struct fuse_file_info *fi) {
 	return 0;
 }
 
+void download(char* path)
+{
+	printf("download %s\n", path);
+}
+
 static int read_callback(const char *path, char *buf, size_t size, off_t offset,
     struct fuse_file_info *fi) {
+
+	struct file* p = fileList;
+	for (p; p != NULL; p = p -> next) {
+		if (strcmp(path, p -> filePath) == 0) {
+			break;
+		}
+	}
+
+	// failure
+	if (p == NULL) return 0;
+
+	if (strlen(p -> bufPath) == 0) {
+		// construct the buffer path and download
+		char bufPath[1000];
+		strcpy(bufPath, bufBase);
+		strcat(bufPath, p -> name);
+		strcpy(p -> bufPath, bufPath);
+
+		download(bufPath);
+		p -> isDownload = 1;
+
+		// set file size
+		FILE *fp = fopen(p -> bufPath, "r");
+		if(!fp) {
+			printf("failed to open the file from \"%s\"\n", p -> bufPath);
+			return 0;
+		}
+		fseek(fp, 0L, SEEK_END);
+		p -> size = ftell(fp);
+		fclose(fp);
+	}
+	
+	if (offset > p -> size)
+		return 0;
+	FILE *fp = fopen(p -> bufPath, "r");
+	if(!fp) {
+		printf("failed to open the file from \"%s\"\n", p -> bufPath);
+		return 0;
+	}
+	fseek(fp, offset, SEEK_SET);
+	if(offset + size > p -> size)
+		size = p -> size - offset;
+	size = fread(buf, sizeof(char), size, fp);
+	fclose(fp);
+
+	printf("*** has read %d offset:%d size:%d\n", (int)size, offset, p -> size);
+	
+	return size;
 
   // if (strcmp(path, filepath) == 0) {
   //   size_t len = strlen(filecontent);
@@ -97,7 +151,7 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
   //   return size;
   // }
 
-  return -ENOENT;
+  // return -ENOENT;
 }
 
 static struct fuse_operations fuse_example_operations = {
@@ -117,10 +171,11 @@ struct file* fileInit(const char* filename, int size, int isDownload)
 	 strcat(filepath, filename);
 	 strcpy(f -> filePath, filepath);
 
-	 char bufPath[1000];
-	 strcpy(bufPath, bufBase);
-	 strcat(bufPath, filename);
-	 strcpy(f -> bufPath, bufPath);
+	 // char bufPath[1000];
+	 // strcpy(bufPath, bufBase);
+	 // strcat(bufPath, filename);
+	 // strcpy(f -> bufPath, bufPath);
+	 f -> bufPath[0] = '\0';
 
 	 f -> isDownload = isDownload;
 	 f -> size = size;
