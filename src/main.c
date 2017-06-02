@@ -19,11 +19,12 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-// static const char *filepath = "/file";
-// static const char *filename = "file";
-// static const char *filecontent = "I'm the content of the only file available there\n";
+
 char bufBase[200] = "/home/ywn/StoragePrj/src/buffuse/";
+// var used for socket
+int m_socket;
 char g_pwd[PATH_MAX+1];
+
 
 struct file
 {
@@ -344,8 +345,10 @@ Boolean session_create(const int a_socket)
       
       // get user input
         printf("\npassword: ");
-        scanf("%s", msgOut.m_param);
-    
+        //scanf("%s", msgOut.m_param);
+        strcpy(msgOut.m_param, "ce150");
+       // = "ce150";
+
       if(!service_query(a_socket, &msgOut, &msgIn) || !Message_hasType(&msgIn, SIFTP_VERBS_ACCEPTED))
       {
         fprintf(stderr, "session_create(): password rejected.\n");
@@ -368,6 +371,8 @@ int clientInit(int a_argc, char **ap_argv)
   // init vars
     realpath(".", g_pwd);
     
+
+    printf("break 1");
   // establish link
     if(!service_create(&socket, ap_argv[1], strtol(ap_argv[2], (char**)NULL, 10)))
     {
@@ -375,6 +380,8 @@ int clientInit(int a_argc, char **ap_argv)
       return -1;
     }
     
+
+        printf("break 2");
   // establish session
     if(!session_create(socket))
     {
@@ -390,30 +397,82 @@ int clientInit(int a_argc, char **ap_argv)
   //  service_loop(socket);  
 }
 
+int split(char** dst, char* str, const char* spl)
+{
+    int n = 0;
+    char *result = NULL;
+    result = strtok(str, spl);
+    while( result != NULL )
+    {
+        strcpy(dst[n++], result);
+        result = strtok(NULL, spl);
+    }
+    return n;
+}
 
 int main(int argc, char *argv[])
 {
+    // init socket 
+    int a_argc = 3;
+    char *ap_argv[] = {"client", "127.0.0.1", "11800"};
+    m_socket = clientInit(a_argc, ap_argv);
+    if (m_socket == -1) {
+      printf("create socket fail\n");
+      exit(-1);
+    }
+
+    // init vars
     int i;
     char** filenameList = malloc(512 * sizeof(char*));
     for (i = 0; i < 512; ++i)
-		filenameList[i] = malloc(512 * sizeof(char));                                   
+    filenameList[i] = malloc(512 * sizeof(char));                                   
     int* cnt = malloc(sizeof(int));
     *cnt = 0;
-    listDir(filenameList, cnt, bufBase); 
-    printf("\n----------------\ncnt = %d\n-------------------\n", *cnt);
+
+    // get list from server
+    Message msgOut;
+    String dataBuf;
+    int dataBufLen;
+    Boolean tempStatus = false;
+    
+    // init variables
+    Message_clear(&msgOut);
+    Message_setType(&msgOut, SIFTP_VERBS_COMMAND);
+    Message_setValue(&msgOut, "ls");
+      
+    // perform command
+    if(remote_exec(m_socket, &msgOut))
+    {
+      if((dataBuf = siftp_recvData(m_socket, &dataBufLen)) != NULL)
+      {
+        // printf("%s", dataBuf);
+        *cnt = split(filenameList, dataBuf, "\n");
+        free(dataBuf);
+      }
+      else {
+        printf("error occurs when receive file list from server\n");
+        exit(-1);
+      }
+    }
+
+    printf("------------------------------\n");
+
+
+    // listDir(filenameList, cnt, bufBase); 
+    // printf("\n----------------\ncnt = %d\n-------------------\n", *cnt);
 
     struct file* f;
     for (i = 0; i < *cnt; ++i) {
         // get file size
-        char fullpath[1000];
-        strcpy(fullpath, bufBase);
-        strcat(fullpath, filenameList[i]);
-        FILE * fp = fopen(fullpath, "r");  
-        fseek(fp, 0L, SEEK_END);  
-        int size = ftell(fp);  
-        fclose(fp); 
+        // char fullpath[1000];
+        // strcpy(fullpath, bufBase);
+        // strcat(fullpath, filenameList[i]);
+        // FILE * fp = fopen(fullpath, "r");  
+        // fseek(fp, 0L, SEEK_END);  
+        // int size = ftell(fp);  
+        // fclose(fp); 
         // init
-        f = fileInit(filenameList[i], size, 1);
+        f = fileInit(filenameList[i], 0, 0);
         add2list(f);
     }
    // printf("break pt 1\n");
@@ -426,13 +485,6 @@ int main(int argc, char *argv[])
 
 
 
-    int a_argc = 3;
-    char *ap_argv[] = {"client", "127.0.0.1", "11800"};
-    int socket = clientInit(a_argc, ap_argv);
-    if (socket == -1) {
-      printf("create socket fail\n");
-      exit(-1);
-    }
 
     // destroy session
   //   if(session_destroy(socket))

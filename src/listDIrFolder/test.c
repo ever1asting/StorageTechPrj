@@ -12,5 +12,8 @@ int main()
 
     argFunc(argc, ap_argv);
 
+    String a = "aaa";
+    printf("%s\n", a);
+
     return 0;
 }
