@@ -1,5 +1,8 @@
 #define FUSE_USE_VERSION 26
 
+#include "ftp/service.h"
+#include "ftp/siftp.h"
+
 #include <fuse.h>
 #include <string.h>
 #include <errno.h>
@@ -8,12 +11,19 @@
 #include <dirent.h>  
 #include <sys/stat.h>  
 #include <unistd.h>  
+#include <limits.h>
 #include <sys/types.h> 
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 // static const char *filepath = "/file";
 // static const char *filename = "file";
 // static const char *filecontent = "I'm the content of the only file available there\n";
 char bufBase[200] = "/home/ywn/StoragePrj/src/buffuse/";
+char g_pwd[PATH_MAX+1];
 
 struct file
 {
@@ -143,23 +153,6 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 	printf("*** has read %d offset:%d size:%d\n", (int)size, offset, p -> size);
 	
 	return size;
-
-  // if (strcmp(path, filepath) == 0) {
-  //   size_t len = strlen(filecontent);
-  //   if (offset >= len) {
-  //     return 0;
-  //   }
-
-  //   if (offset + size > len) {
-  //     memcpy(buf, filecontent + offset, len - offset);
-  //     return len - offset;
-  //   }
-
-  //   memcpy(buf, filecontent + offset, size);
-  //   return size;
-  // }
-
-  // return -ENOENT;
 }
 
 int write_callback(const char *path, const char *buf, 
@@ -206,26 +199,26 @@ static struct fuse_operations fuse_example_operations = {
 
 struct file* fileInit(const char* filename, int size, int isDownload)
 {
-	struct file* f = malloc (sizeof (struct file));
+  	struct file* f = malloc (sizeof (struct file));
 
-	strcpy(f -> name, filename);
-	char filepath[1000] = "/";
-	strcat(filepath, filename);
-	strcpy(f -> filePath, filepath);
+  	strcpy(f -> name, filename);
+  	char filepath[1000] = "/";
+  	strcat(filepath, filename);
+  	strcpy(f -> filePath, filepath);
 
-	if (isDownload) {
-		char buf[1000];
-		strcpy(buf, bufBase);
-		strcat(buf, filename);
-		strcpy(f -> bufPath, buf);
-	}
-	else 
-		f -> bufPath[0] = '\0';
+  	if (isDownload) {
+  		char buf[1000];
+  		strcpy(buf, bufBase);
+  		strcat(buf, filename);
+  		strcpy(f -> bufPath, buf);
+  	}
+  	else 
+  		f -> bufPath[0] = '\0';
 
-	f -> isDownload = isDownload;
-	f -> size = size;
+  	f -> isDownload = isDownload;
+  	f -> size = size;
 
-	return f;
+  	return f;
 }
 
 
@@ -256,10 +249,147 @@ void listDir(char** res, int* cnt, char *path)
             strcpy(res[*cnt], ent->d_name);
             res[*cnt][strlen(ent->d_name)] = '\0';
             *cnt += 1;
-    	}
+        }
     }  
   
 }  
+
+
+// funcs for socket
+Boolean service_create(int *ap_socket, const String a_serverName, const int a_serverPort)
+{
+  // variables
+    struct sockaddr_in serverAddr;
+    struct hostent *p_serverInfo;
+    
+  // create server address
+    
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    
+    // determine dotted quad str from DNS query
+      if((p_serverInfo = gethostbyname(a_serverName)) == NULL)
+      {
+        herror("service_create()");
+        return false;
+      }
+      
+      #ifndef NODEBUG
+        printf("service_create(): serverName='%s', serverAddr='%s'\n", a_serverName, inet_ntoa(*((struct in_addr *)p_serverInfo->h_addr)));
+      #endif
+      
+      serverAddr.sin_addr.s_addr = inet_addr(inet_ntoa(*((struct in_addr *)p_serverInfo->h_addr)));
+      
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(a_serverPort);
+    
+  // create socket
+    if((*ap_socket = socket(serverAddr.sin_family, SOCK_STREAM, 0)) < 0)
+    {
+      perror("service_create(): create socket");
+      return false;
+    }
+  
+  // connect on socket
+    if((connect(*ap_socket, (struct sockaddr *)&serverAddr, sizeof(struct sockaddr))) < 0)
+    {
+      perror("service_create(): connect socket");
+      close(*ap_socket);
+      return false;
+    }
+  
+  return true;
+}
+
+Boolean session_create(const int a_socket)
+{
+  // variables
+    Message msgOut, msgIn;
+    
+  // init vars
+    Message_clear(&msgOut);
+    Message_clear(&msgIn);
+    
+  // session challenge dialogue
+  
+    // cilent: greeting
+    // server: identify
+      Message_setType(&msgOut, SIFTP_VERBS_SESSION_BEGIN);
+      
+      if(!service_query(a_socket, &msgOut, &msgIn) || !Message_hasType(&msgIn, SIFTP_VERBS_IDENTIFY))
+      {
+        fprintf(stderr, "session_create(): connection request rejected.\n");
+        return false;
+      }
+      
+    // cilent: username
+    // server: accept|deny
+      Message_setType(&msgOut, SIFTP_VERBS_USERNAME);
+      
+      // get user input
+        printf("\nusername: ");
+        
+        // XXX prohibited by this project
+        //scanf("%s", msgOut.m_param);
+      
+      if(!service_query(a_socket, &msgOut, &msgIn) || !Message_hasType(&msgIn, SIFTP_VERBS_ACCEPTED))
+      {
+        fprintf(stderr, "session_create(): username rejected.\n");
+        return false;
+      }
+    
+    // cilent: password
+    // server: accept|deny
+    
+      Message_setType(&msgOut, SIFTP_VERBS_PASSWORD);
+      
+      // get user input
+        printf("\npassword: ");
+        scanf("%s", msgOut.m_param);
+    
+      if(!service_query(a_socket, &msgOut, &msgIn) || !Message_hasType(&msgIn, SIFTP_VERBS_ACCEPTED))
+      {
+        fprintf(stderr, "session_create(): password rejected.\n");
+        return false;
+      }
+    
+    // session now established
+      #ifndef NODEBUG
+        printf("session_create(): success\n");
+      #endif
+      
+  return true;
+}
+
+int clientInit(int a_argc, char **ap_argv)
+{
+  // variables
+    int socket;
+    
+  // init vars
+    realpath(".", g_pwd);
+    
+  // establish link
+    if(!service_create(&socket, ap_argv[1], strtol(ap_argv[2], (char**)NULL, 10)))
+    {
+      fprintf(stderr, "%s: Connection to %s:%s failed.\n", ap_argv[0], ap_argv[1], ap_argv[2]);
+      return -1;
+    }
+    
+  // establish session
+    if(!session_create(socket))
+    {
+      close(socket);
+      
+      fprintf(stderr, "%s: Session failed.\n", ap_argv[0]);
+      return -1;
+    }
+    
+    printf("\nSession established successfully.");
+  
+    return socket;
+  //  service_loop(socket);  
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -274,25 +404,43 @@ int main(int argc, char *argv[])
 
     struct file* f;
     for (i = 0; i < *cnt; ++i) {
-    	// get file size
-    	char fullpath[1000];
-    	strcpy(fullpath, bufBase);
-    	strcat(fullpath, filenameList[i]);
-	    FILE * fp = fopen(fullpath, "r");  
-		fseek(fp, 0L, SEEK_END);  
-		int size = ftell(fp);  
-		fclose(fp); 
-		// init
-    	f = fileInit(filenameList[i], size, 1);
-		add2list(f);
+        // get file size
+        char fullpath[1000];
+        strcpy(fullpath, bufBase);
+        strcat(fullpath, filenameList[i]);
+        FILE * fp = fopen(fullpath, "r");  
+        fseek(fp, 0L, SEEK_END);  
+        int size = ftell(fp);  
+        fclose(fp); 
+        // init
+        f = fileInit(filenameList[i], size, 1);
+        add2list(f);
     }
    // printf("break pt 1\n");
 
-	struct file* p = fileList;
-	for (p; p != NULL; p = p -> next) {
-		printf("file: %s, filepath = %s, bufpath = %s, size = %d, isDownload = %d\n",
-			p -> name, p -> filePath, p -> bufPath, p -> size, p -> isDownload);
-	}
+  	struct file* p = fileList;
+  	for (p; p != NULL; p = p -> next) {
+    		printf("file: %s, filepath = %s, bufpath = %s, size = %d, isDownload = %d\n",
+    			p -> name, p -> filePath, p -> bufPath, p -> size, p -> isDownload);
+  	}
 
- 	return fuse_main(argc, argv, &fuse_example_operations, NULL);
+
+
+    int a_argc = 3;
+    char *ap_argv[] = {"client", "127.0.0.1", "11800"};
+    int socket = clientInit(a_argc, ap_argv);
+    if (socket == -1) {
+      printf("create socket fail\n");
+      exit(-1);
+    }
+
+    // destroy session
+  //   if(session_destroy(socket))
+  //     printf("Session terminated successfully.\n");
+    
+  // // destroy link
+  //   close(socket);
+
+   	return fuse_main(argc, argv, &fuse_example_operations, NULL);
 }
+

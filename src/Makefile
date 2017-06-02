@@ -1,12 +1,16 @@
-CC := gcc
-CFLAGS := -g -Wall -D_FILE_OFFSET_BITS=64
-OBJS := $(patsubst %.c, %.o, $(wildcard *.c))
+TARGET = main
+
+SRC = service.c siftp.c main.c
+
+OBJS = $(SRC:.c=.o)
+
+CC = gcc
+
+INCLUDE = -I/usr/include/ -I/usr/include/ncurses
 
 LIBS := -lfuse
 
-TARGET := main
-
-.PHONY: all clean
+CFLAGS = -g -Wall -D_FILE_OFFSET_BITS=64
 
 all: $(TARGET)
 
@@ -17,4 +21,4 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -c $<
 
 clean:
-	rm -f $(TARGET) $(OBJS)
+	rm $(OBJS) $(TARGET)
