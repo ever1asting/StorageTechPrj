@@ -49,6 +49,10 @@ void add2list(struct file* f)
 	f -> next = p;
 }
 
+// functions declaration
+struct file* fileInit(const char* filename, int size, int isDownload);
+
+
 static int getattr_callback(const char *path, struct stat *stbuf) {
 	memset(stbuf, 0, sizeof(struct stat));
 
@@ -99,9 +103,75 @@ static int open_callback(const char *path, struct fuse_file_info *fi) {
 	return 0;
 }
 
-void download(char* path)
+Boolean download(char* name, char* path)
 {
-	printf("download %s\n", path);
+    printf("download %s\n", path);
+
+    char dstPath[PATH_MAX+1];
+    String src, dst;
+    Message msgOut;
+    String dataBuf;
+    int dataBufLen;
+    Boolean tempStatus = false;
+    
+    // init variables
+    Message_clear(&msgOut);
+    // init vars
+    src = name;
+    dst = path;
+    
+    // build command with param='get remote-path'
+    Message_setType(&msgOut, SIFTP_VERBS_COMMAND);
+    Message_setValue(&msgOut, "get");
+    strcat(Message_getValue(&msgOut), " ");
+    strcat(Message_getValue(&msgOut), src);
+      
+    // determine destination file path
+      if(service_getAbsolutePath(g_pwd, dst, dstPath))
+      {
+        // check write perms & file type
+        if(service_permTest(dstPath, SERVICE_PERMS_WRITE_TEST) && service_statTest(dstPath, S_IFMT, S_IFREG))
+        {
+          // perform command
+          if(remote_exec(m_socket, &msgOut))
+          {
+            // receive destination file
+            if((dataBuf = siftp_recvData(m_socket, &dataBufLen)) != NULL)
+            {
+              // write file
+              if((tempStatus = service_writeFile(dstPath, dataBuf, dataBufLen)))
+              {
+                printf("%d bytes transferred.", dataBufLen);
+              }
+              
+              free(dataBuf);
+              
+              #ifndef NODEBUG
+                printf("get(): file writing %s.\n", tempStatus ? "OK" : "FAILED");
+              #endif
+            }
+            #ifndef NODEBUG
+            else
+              printf("get(): getting of remote file failed.\n");
+            #endif
+          }
+          #ifndef NODEBUG
+          else
+            printf("get(): server gave negative ACK.\n");
+          #endif
+        }
+        #ifndef NODEBUG
+        else
+          printf("get(): don't have write permissions.\n");
+        #endif
+      }
+      #ifndef NODEBUG
+      else
+        printf("get(): absolute path determining failed.\n");
+      #endif
+      
+    return tempStatus;
+
 }
 
 static int read_callback(const char *path, char *buf, size_t size, off_t offset,
@@ -124,7 +194,10 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 		strcat(bufPath, p -> name);
 		strcpy(p -> bufPath, bufPath);
 
-		download(bufPath);
+		if (download(p -> name, bufPath) == false) {
+        printf("failed to download %s from server.\n");
+        return 0;
+    }
 		p -> isDownload = 1;
 
 		// set file size
@@ -156,36 +229,131 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 	return size;
 }
 
+Boolean upload(char* name, char* path)
+{
+    printf("upload %s\n", path);
+    char srcPath[PATH_MAX+1];
+    String src, dst;
+
+    Message msgOut;
+    String dataBuf;
+    int dataBufLen;
+    Boolean tempStatus = false;
+    
+    // init variables
+    Message_clear(&msgOut);
+    // init vars
+    src = path;
+    dst = name;
+      
+    // build command with param='put remote-path'
+      Message_setType(&msgOut, SIFTP_VERBS_COMMAND);
+      Message_setValue(&msgOut, "put");
+      strcat(Message_getValue(&msgOut), " ");
+      strcat(Message_getValue(&msgOut), dst);
+      
+    // determine source path
+      if(service_getAbsolutePath(g_pwd, src, srcPath))
+      {
+        // check read perms & file type
+        if(service_permTest(srcPath, SERVICE_PERMS_READ_TEST) && service_statTest(srcPath, S_IFMT, S_IFREG))
+        {
+          // try to read source file
+          if((dataBuf = service_readFile(srcPath, &dataBufLen)) != NULL)
+          {
+            // client: i'm sending a file
+            if(remote_exec(m_socket, &msgOut))
+            {
+              // server: OK to send file
+              
+              // client: here is the file
+              if((tempStatus = (siftp_sendData(m_socket, dataBuf, dataBufLen) && service_recvStatus(m_socket))))
+              {
+                // server: success
+              
+                printf("%d bytes transferred.", dataBufLen);
+              }
+              
+              #ifndef NODEBUG
+                printf("put(): file sent %s.\n", tempStatus ? "OK" : "FAILED");
+              #endif
+            }
+            #ifndef NODEBUG
+            else
+              printf("put(): server gave negative ACK.\n");
+            #endif
+            
+            free(dataBuf);
+          }
+          #ifndef NODEBUG
+          else
+            printf("put(): file reading failed.\n");
+          #endif
+        }
+        #ifndef NODEBUG
+        else
+          printf("put(): don't have read permissions.\n");
+        #endif
+      }
+      #ifndef NODEBUG
+      else
+        printf("put(): absolute path determining failed.\n");
+      #endif
+      
+    return tempStatus;
+}
+
 int write_callback(const char *path, const char *buf, 
 			size_t size, off_t offset, struct fuse_file_info *fi) {
-    return 0;
+ //   return 0;
 
-    /*
-    PSStatus *status = getPSStatus();
+    printf("-----------\nwrite\n--------------------\n");
+    printf("%s\n", path);
 
-    for (int i=0; i<status->configsN; ++i)
-        if (strcmp(path, status->configsPath[i]) == 0) {
-            return status->configs[i]->write(buf, size, offset);
-        }
+    // write to bufPath
+    char tempBufPath[1000];
+    strcpy(tempBufPath, bufBase);
+    strcat(tempBufPath, path + 1);
 
-    int ret = -ENOENT;
-    for (int i=0; i<status->foldersN; ++i)
-        if (strstr(path, status->foldersPath[i]) == path) {
-            const char *fileName = path + strlen(status->foldersPath[i]) + 1;
-            if ((strlen(fileName) > 0) && (status->fileMap[i].count(fileName))) {
-                string newPath = status->bufferFolder;
-                newPath += "/";
-                newPath += status->fileMap[i][fileName];
-                lseek(fi->fh, offset, SEEK_SET);
-                ret = write(fi->fh, (void*)buf, size);
-                return ret;
-            }
-        }
-    return ret;
-    */
+    FILE *fp = fopen(tempBufPath,"w+");
+    printf("write in buf path: %s\n", tempBufPath);
+    if(!fp) {
+        printf("failed to open %s\n", tempBufPath);
+        return 0;
+    }
+    fseek(fp, offset, SEEK_SET);
+    size = fwrite(buf, sizeof(char), size, fp);
+    fclose(fp);
+
+    // upload to server
+    if (upload(path + 1, tempBufPath) == false) {
+        printf("failed to upload\n");
+        return 0;   
+    }
+    
+    // modify fileList
+    add2list(fileInit(path + 1, size, 1));
+
+    printf("*** has write, size:%d offset:%d\n",(int)size, offset);
+    
+    return size;
 }
 
 int create_callback(const char *path , mode_t mode, struct fuse_file_info *fi) {
+    printf("----\ncreate\n---------------\n");
+    printf("%s\n", path);
+
+
+    struct file* p = fileList;
+    for (p; p != NULL; p = p -> next) {
+        if (strcmp(path + 1, p -> name) == 0)
+            return -EEXIST;        
+    }
+
+
+
+    add2list(fileInit(path + 1, 0, 1));
+
     return 0;
 }
 
@@ -433,7 +601,6 @@ int main(int argc, char *argv[])
     Message msgOut;
     String dataBuf;
     int dataBufLen;
-    Boolean tempStatus = false;
     
     // init variables
     Message_clear(&msgOut);
