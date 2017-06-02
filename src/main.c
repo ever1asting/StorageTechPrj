@@ -5,6 +5,10 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <dirent.h>  
+#include <sys/stat.h>  
+#include <unistd.h>  
+#include <sys/types.h> 
 
 // static const char *filepath = "/file";
 // static const char *filename = "file";
@@ -15,7 +19,7 @@ struct file
 {
 	char name[256];
 	char filePath[1000];
-	char bufPath[1000];
+	char bufPath[1000]; 
 	int size;
 	int isDownload;
 	struct file* next;
@@ -77,6 +81,10 @@ static int readdir_callback(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 static int open_callback(const char *path, struct fuse_file_info *fi) {
+	printf("-----------------open-----------------\n");
+	printf("path = %s\n", path);
+	printf("------------------------------------\n");
+
 	return 0;
 }
 
@@ -154,44 +162,131 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
   // return -ENOENT;
 }
 
+int write_callback(const char *path, const char *buf, 
+			size_t size, off_t offset, struct fuse_file_info *fi) {
+    return 0;
+
+    /*
+    PSStatus *status = getPSStatus();
+
+    for (int i=0; i<status->configsN; ++i)
+        if (strcmp(path, status->configsPath[i]) == 0) {
+            return status->configs[i]->write(buf, size, offset);
+        }
+
+    int ret = -ENOENT;
+    for (int i=0; i<status->foldersN; ++i)
+        if (strstr(path, status->foldersPath[i]) == path) {
+            const char *fileName = path + strlen(status->foldersPath[i]) + 1;
+            if ((strlen(fileName) > 0) && (status->fileMap[i].count(fileName))) {
+                string newPath = status->bufferFolder;
+                newPath += "/";
+                newPath += status->fileMap[i][fileName];
+                lseek(fi->fh, offset, SEEK_SET);
+                ret = write(fi->fh, (void*)buf, size);
+                return ret;
+            }
+        }
+    return ret;
+    */
+}
+
+int create_callback(const char *path , mode_t mode, struct fuse_file_info *fi) {
+    return 0;
+}
+
 static struct fuse_operations fuse_example_operations = {
   .getattr = getattr_callback,
   .open = open_callback,
   .read = read_callback,
   .readdir = readdir_callback,
+  .create = create_callback,
+  .write = write_callback,
 };
 
 struct file* fileInit(const char* filename, int size, int isDownload)
 {
-	 struct file* f = malloc (sizeof (struct file));
-	 
-	 strcpy(f -> name, filename);
-	 
-	 char filepath[1000] = "/";
-	 strcat(filepath, filename);
-	 strcpy(f -> filePath, filepath);
+	struct file* f = malloc (sizeof (struct file));
 
-	 // char bufPath[1000];
-	 // strcpy(bufPath, bufBase);
-	 // strcat(bufPath, filename);
-	 // strcpy(f -> bufPath, bufPath);
-	 f -> bufPath[0] = '\0';
+	strcpy(f -> name, filename);
+	char filepath[1000] = "/";
+	strcat(filepath, filename);
+	strcpy(f -> filePath, filepath);
 
-	 f -> isDownload = isDownload;
-	 f -> size = size;
+	if (isDownload) {
+		char buf[1000];
+		strcpy(buf, bufBase);
+		strcat(buf, filename);
+		strcpy(f -> bufPath, buf);
+	}
+	else 
+		f -> bufPath[0] = '\0';
 
-	 return f;
+	f -> isDownload = isDownload;
+	f -> size = size;
+
+	return f;
 }
 
 
+void listDir(char** res, int* cnt, char *path)  
+{  
+    DIR              *pDir ;  
+    struct dirent    *ent  ;  
+    char              childpath[512];  
+
+    pDir=opendir(path);  
+    memset(childpath,0,sizeof(childpath));  
+
+    while((ent=readdir(pDir))!=NULL)  
+    {  
+
+        if(ent->d_type & DT_DIR)  
+        {  
+			// do nothing with subfolder now
+
+            if(strcmp(ent->d_name,".")==0 || strcmp(ent->d_name,"..")==0)  
+                    continue;  
+
+           // sprintf(childpath,"%s/%s",path,ent->d_name);  
+           // printf("path:%s\n",childpath);   
+        }  
+        else
+        {
+            strcpy(res[*cnt], ent->d_name);
+            res[*cnt][strlen(ent->d_name)] = '\0';
+            *cnt += 1;
+    	}
+    }  
+  
+}  
+
 int main(int argc, char *argv[])
 {
-	struct file* f = fileInit("fileA", 12345, 0);
-	add2list(f);
-	f = fileInit("fileB", 12222, 0);
-	add2list(f);
-	f = fileInit("fileC", 12333, 1);
-	add2list(f);
+    int i;
+    char** filenameList = malloc(512 * sizeof(char*));
+    for (i = 0; i < 512; ++i)
+		filenameList[i] = malloc(512 * sizeof(char));                                   
+    int* cnt = malloc(sizeof(int));
+    *cnt = 0;
+    listDir(filenameList, cnt, bufBase); 
+    printf("\n----------------\ncnt = %d\n-------------------\n", *cnt);
+
+    struct file* f;
+    for (i = 0; i < *cnt; ++i) {
+    	// get file size
+    	char fullpath[1000];
+    	strcpy(fullpath, bufBase);
+    	strcat(fullpath, filenameList[i]);
+	    FILE * fp = fopen(fullpath, "r");  
+		fseek(fp, 0L, SEEK_END);  
+		int size = ftell(fp);  
+		fclose(fp); 
+		// init
+    	f = fileInit(filenameList[i], size, 1);
+		add2list(f);
+    }
+   // printf("break pt 1\n");
 
 	struct file* p = fileList;
 	for (p; p != NULL; p = p -> next) {
