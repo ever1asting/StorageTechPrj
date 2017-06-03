@@ -51,6 +51,7 @@ void add2list(struct file* f)
 
 // functions declaration
 struct file* fileInit(const char* filename, int size, int isDownload);
+Boolean download(char* name, char* path);
 
 
 static int getattr_callback(const char *path, struct stat *stbuf) {
@@ -82,10 +83,10 @@ static int readdir_callback(const char *path, void *buf, fuse_fill_dir_t filler,
   	(void) fi;
 
   	if (strcmp(path, "/") == 0)	{
-		filler(buf, ".", NULL, 0);
-		filler(buf, "..", NULL, 0);
+  		filler(buf, ".", NULL, 0);
+  		filler(buf, "..", NULL, 0);
 
-		struct file* p = fileList;
+  		struct file* p = fileList;
   		while (p != NULL) {
   			filler(buf, p -> name, NULL, 0);
     		p = p -> next;
@@ -99,6 +100,34 @@ static int open_callback(const char *path, struct fuse_file_info *fi) {
 	printf("-----------------open-----------------\n");
 	printf("path = %s\n", path);
 	printf("------------------------------------\n");
+
+  struct file* p = fileList;
+  for (p; p != NULL; p = p -> next) {
+    if (strcmp(p -> name, path + 1) == 0) {
+        if (p -> isDownload == 0) {
+          if (download(p -> name, p -> bufPath) == false) {
+              printf("failed to download %s from server.\n");
+              return 0;
+          }
+          p -> isDownload = 1;
+          // set file size
+          FILE *fp = fopen(p -> bufPath, "r");
+          if(!fp) {
+            printf("failed to open the file from \"%s\"\n", p -> bufPath);
+            return 0;
+          }
+          fseek(fp, 0L, SEEK_END);
+          p -> size = ftell(fp);
+          fclose(fp);
+        }
+
+        int ret = open(p -> bufPath, O_RDWR);
+        if (ret < 0)
+            return -1;
+        close(ret);
+        return 0;
+    }
+  }
 
 	return 0;
 }
@@ -177,6 +206,9 @@ Boolean download(char* name, char* path)
 static int read_callback(const char *path, char *buf, size_t size, off_t offset,
     struct fuse_file_info *fi) {
 
+  printf("----\nread\n%s, size = %d, offset= %d\n-------\n", 
+            path, size, offset);
+
 	struct file* p = fileList;
 	for (p; p != NULL; p = p -> next) {
 		if (strcmp(path, p -> filePath) == 0) {
@@ -187,7 +219,7 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 	// failure
 	if (p == NULL) return 0;
 
-	if (strlen(p -> bufPath) == 0) {
+	if (p -> isDownload == 0) {
 		// construct the buffer path and download
 		char bufPath[1000];
 		strcpy(bufPath, bufBase);
@@ -213,17 +245,22 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 	
 	if (offset > p -> size)
 		return 0;
+
+  int fd = open(p -> bufPath, O_RDONLY);
+  lseek(fd, offset, SEEK_SET);
+  int ret = read(fd, (void*)buf, size);
+  close(fd);
+/*
 	FILE *fp = fopen(p -> bufPath, "r");
 	if(!fp) {
 		printf("failed to open the file from \"%s\"\n", p -> bufPath);
 		return 0;
 	}
-	fseek(fp, offset, SEEK_SET);
-	if(offset + size > p -> size)
-		size = p -> size - offset;
-	size = fread(buf, sizeof(char), size, fp);
-	fclose(fp);
 
+	fseek(fp, offset, SEEK_SET);
+	size = fread(buf, sizeof(char), p -> size, fp);
+	fclose(fp);
+*/
 	printf("*** has read %d offset:%d size:%d\n", (int)size, offset, p -> size);
 	
 	return size;
@@ -350,9 +387,7 @@ int create_callback(const char *path , mode_t mode, struct fuse_file_info *fi) {
             return -EEXIST;        
     }
 
-
-
-    add2list(fileInit(path + 1, 0, 1));
+    add2list(fileInit(path + 1, 0, 0));
 
     return 0;
 }
@@ -375,14 +410,11 @@ struct file* fileInit(const char* filename, int size, int isDownload)
   	strcat(filepath, filename);
   	strcpy(f -> filePath, filepath);
 
-  	if (isDownload) {
-  		char buf[1000];
-  		strcpy(buf, bufBase);
-  		strcat(buf, filename);
-  		strcpy(f -> bufPath, buf);
-  	}
-  	else 
-  		f -> bufPath[0] = '\0';
+    // construct the buf path
+		char buf[1000];
+		strcpy(buf, bufBase);
+		strcat(buf, filename);
+		strcpy(f -> bufPath, buf);
 
   	f -> isDownload = isDownload;
   	f -> size = size;
@@ -570,6 +602,7 @@ int split(char** dst, char* str, const char* spl)
     int n = 0;
     char *result = NULL;
     result = strtok(str, spl);
+    // printf("after res\n");
     while( result != NULL )
     {
         strcpy(dst[n++], result);
@@ -605,14 +638,14 @@ int main(int argc, char *argv[])
     // init variables
     Message_clear(&msgOut);
     Message_setType(&msgOut, SIFTP_VERBS_COMMAND);
-    Message_setValue(&msgOut, "ls");
+    Message_setValue(&msgOut, "sizels");
       
     // perform command
     if(remote_exec(m_socket, &msgOut))
     {
       if((dataBuf = siftp_recvData(m_socket, &dataBufLen)) != NULL)
       {
-        // printf("%s", dataBuf);
+        printf("dataBuf, %s", dataBuf);
         *cnt = split(filenameList, dataBuf, "\n");
         free(dataBuf);
       }
@@ -630,17 +663,23 @@ int main(int argc, char *argv[])
 
     struct file* f;
     for (i = 0; i < *cnt; ++i) {
-        // get file size
-        // char fullpath[1000];
-        // strcpy(fullpath, bufBase);
-        // strcat(fullpath, filenameList[i]);
-        // FILE * fp = fopen(fullpath, "r");  
-        // fseek(fp, 0L, SEEK_END);  
-        // int size = ftell(fp);  
-        // fclose(fp); 
-        // init
-        f = fileInit(filenameList[i], 0, 0);
+        //printf("%s\n", filenameList[i]);
+
+        char** tempName = malloc(4 * sizeof(char*));
+        for (i = 0; i < 4; ++i)
+          tempName[i] = malloc(512 * sizeof(char)); 
+        // printf("aaa\n");
+        split(tempName, filenameList[i], " ");
+        // printf("ababa");
+        strcpy(filenameList[i], tempName[1]);
+        // printf("bbbb");
+
+        f = fileInit(filenameList[i], atoi(tempName[0]), 0);
         add2list(f);
+
+        for (i = 0; i < 4; ++i)
+          free(tempName[i]);
+        free(tempName); 
     }
    // printf("break pt 1\n");
 

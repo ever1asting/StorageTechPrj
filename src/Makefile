@@ -10,7 +10,7 @@ INCLUDE = -I/usr/include/ -I/usr/include/ncurses
 
 LIBS := -lfuse
 
-CFLAGS = -g -Wall -D_FILE_OFFSET_BITS=64
+CFLAGS = -g -Wall -D_FILE_OFFSET_BITS=64 -DNODEBUG
 
 all: $(TARGET)
 
@@ -21,4 +21,4 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -c $<
 
 clean:
-	rm $(OBJS) $(TARGET)
+	rm *.o $(TARGET)
