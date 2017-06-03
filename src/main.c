@@ -657,17 +657,19 @@ int main(int argc, char *argv[])
 
     printf("------------------------------\n");
 
-
+    printf("cnt = %d\n", *cnt);
     // listDir(filenameList, cnt, bufBase); 
     // printf("\n----------------\ncnt = %d\n-------------------\n", *cnt);
+
+    // while(1);
 
     struct file* f;
     for (i = 0; i < *cnt; ++i) {
         //printf("%s\n", filenameList[i]);
-
+        int j;
         char** tempName = malloc(4 * sizeof(char*));
-        for (i = 0; i < 4; ++i)
-          tempName[i] = malloc(512 * sizeof(char)); 
+        for (j = 0; j < 4; ++j)
+          tempName[j] = malloc(512 * sizeof(char)); 
         // printf("aaa\n");
         split(tempName, filenameList[i], " ");
         // printf("ababa");
@@ -677,8 +679,8 @@ int main(int argc, char *argv[])
         f = fileInit(filenameList[i], atoi(tempName[0]), 0);
         add2list(f);
 
-        for (i = 0; i < 4; ++i)
-          free(tempName[i]);
+        for (j = 0; j < 4; ++j)
+          free(tempName[j]);
         free(tempName); 
     }
    // printf("break pt 1\n");
