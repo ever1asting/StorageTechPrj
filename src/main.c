@@ -1,7 +1,7 @@
 #define FUSE_USE_VERSION 26
 
-#include "service.h"
-#include "siftp.h"
+#include "ftpLib/service.h"
+#include "ftpLib/siftp.h"
 
 #include <fuse.h>
 #include <string.h>

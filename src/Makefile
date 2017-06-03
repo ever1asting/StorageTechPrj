@@ -1,8 +1,8 @@
 TARGET = main
 
-SRC = service.c siftp.c main.c
+SRC = ftpLib/service.c ftpLib/siftp.c main.c
 
-OBJS = $(SRC:.c=.o)
+OBJS = service.o siftp.o main.o
 
 CC = gcc
 
