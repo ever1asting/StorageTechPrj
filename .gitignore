@@ -6,5 +6,5 @@ learn
 src/buffuse
 src/main
 *.o
-src/tempFolder
+src/tmpFolder
 src/ftpLib/ServerFolder
