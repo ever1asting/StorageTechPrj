@@ -126,7 +126,11 @@
 			
 			// assemble string
 				strncpy(a_result, ap_msg->m_verb, SIFTP_VERB_SIZE);
-				strncpy(&a_result[SIFTP_VERB_SIZE], ap_msg->m_param, SIFTP_PARAMETER_SIZE);
+				// strncpy(&a_result[SIFTP_VERB_SIZE], ap_msg->m_param, SIFTP_PARAMETER_SIZE);
+				int k;
+				for (k = 0; k < SIFTP_PARAMETER_SIZE; ++k)
+					a_result[SIFTP_VERB_SIZE + k] = ap_msg->m_param[k];
+				// a_result[]
 				
 				#ifndef NODEBUG
 					printf("serialize(): result='%s'\n", a_result);
@@ -145,8 +149,12 @@
 				
 			// parse serialized string
 				strncpy(ap_result->m_verb, a_str, SIFTP_VERB_SIZE);
-				strncpy(ap_result->m_param, &a_str[SIFTP_VERB_SIZE], SIFTP_PARAMETER_SIZE);
-				
+				// strncpy(ap_result->m_param, &a_str[SIFTP_VERB_SIZE], SIFTP_PARAMETER_SIZE);
+				int k;
+				for (k = 0; k < SIFTP_PARAMETER_SIZE; ++k)
+					ap_result->m_param[k] = a_str[SIFTP_VERB_SIZE + k];// = ap_msg->m_param[k];
+				ap_result->m_param[SIFTP_PARAMETER_SIZE] = '\0';
+
 				#ifndef NODEBUG
 					printf("deserialize(): message {verb='%s',param='%s'}\n", ap_result->m_verb, ap_result->m_param);
 				#endif
@@ -235,18 +243,53 @@
 			// send data as discrete messages
 				Message_setType(&msgOut, SIFTP_VERBS_DATA_STREAM_PAYLOAD);
 				
+
+				char* aaa = malloc(sizeof(char) * a_length);
+				// char* aaa2 = malloc(sizeof(char) * a_length);
 				for(tempLen = 0; tempLen < a_length; tempLen += SIFTP_PARAMETER_SIZE)
 				{
 					memset(&msgOut.m_param, 0, sizeof(msgOut.m_param));
 					
 					copySize = a_length - tempLen;
 					
-					strncpy(msgOut.m_param, &a_data[tempLen], (copySize < SIFTP_PARAMETER_SIZE) ? copySize : SIFTP_PARAMETER_SIZE);
+
+					// strncpy(msgOut.m_param, a_data + tempLen, (copySize < SIFTP_PARAMETER_SIZE) ? copySize : SIFTP_PARAMETER_SIZE);
 					
+					int len_ = (copySize < SIFTP_PARAMETER_SIZE) ? copySize : SIFTP_PARAMETER_SIZE;
+					// printf("len = %d\n", len_);
+					int k;
+					for (k = 0; k < len_; ++k)
+						msgOut.m_param[k] = a_data[tempLen + k];
+					msgOut.m_param[len_] = '\0';
+
+					for (k = 0; k < len_; ++k)
+						aaa[tempLen + k] = msgOut.m_param[k];
+					// strncpy(&aaa[tempLen], msgOut.m_param, (copySize < SIFTP_PARAMETER_SIZE) ? copySize : SIFTP_PARAMETER_SIZE);
+					// strncpy(aaa2[tempLen], &a_data[tempLen], (copySize < SIFTP_PARAMETER_SIZE) ? copySize : SIFTP_PARAMETER_SIZE);
+
 					if(!siftp_send(a_socket, &msgOut))
 						return false;
 				}
+
+				// printf("---------\nmycode\n------------\n");
+				// 	FILE * outfile;
+    // 				outfile = fopen("aaaa.out", "wb");
+				//     fwrite( aaa, sizeof(char ), a_length, outfile );
+				// 	fclose(outfile);
+				// 	free(aaa);
 			
+					// FILE * outfile2;
+    	// 			outfile2 = fopen("aaaa2.out", "wb");
+				 //    fwrite( aaa2, sizeof(char ), a_length, outfile2 );
+					// fclose(outfile2);
+					// free(aaa2);
+					// FILE * outfile;
+    	// 			outfile = fopen("aaaa.out", "wb");
+				 //    fwrite(a_data, sizeof(char ), a_length, outfile );
+					// fclose(outfile);
+					// free(aaa);
+
+
 			// tailer
 				Message_setType(&msgOut, SIFTP_VERBS_DATA_STREAM_TAILER);
 				Message_setValue(&msgOut, "");
@@ -289,6 +332,8 @@
 					// read stream into buffer
 						tempLen = 0;
 						
+						char* aaa = malloc(sizeof(char) * (*ap_length));
+
 						do
 						{
 							// read stream
@@ -312,14 +357,18 @@
 										// the amount of data in the current message
 										copySize = *ap_length - tempLen;
 										
-										/**
-										 * XXX Very hard to find BUG:
-										 * Assume messages 1 to N are sent by server.
-										 * We recieve N-1 messages with the whole parameter field used up.
-										 * In the Nth message, there can only be <= MAX_parameter_size amount of data in the parameter field.
-										 * The previous buggy code ignored this and just copied MAX_parameter_size of data regardless of how much actual data was in the Message; thus we had nasty memory leaks.
-										*/
-										strncpy(&buf[tempLen], msgIn.m_param, (copySize > SIFTP_PARAMETER_SIZE) ? SIFTP_PARAMETER_SIZE : copySize);
+										// strncpy(&buf[tempLen], msgIn.m_param, (copySize > SIFTP_PARAMETER_SIZE) ? SIFTP_PARAMETER_SIZE : copySize);
+									
+										int len_ = (copySize < SIFTP_PARAMETER_SIZE) ? copySize : SIFTP_PARAMETER_SIZE;
+										
+										// printf("len = %d\n", len_);
+										int k;
+										for (k = 0; k < len_; ++k)
+											buf[tempLen + k] = msgIn.m_param[k];
+										
+										for (k = 0; k < len_; ++k)
+											aaa[tempLen + k] = msgIn.m_param[k];
+
 									}
 									else
 									{
@@ -340,6 +389,13 @@
 								}
 						}
 						while(!Message_hasType(&msgIn, SIFTP_VERBS_DATA_STREAM_TAILER));
+
+					// 	printf("---------\nmycode2\n------------\n");
+					// FILE * outfile;
+    	// 			outfile = fopen("aaaa2.out", "wb");
+				 //    fwrite( aaa, sizeof(char ), *ap_length, outfile );
+					// fclose(outfile);
+					// free(aaa);
 				}
 				
 			return buf;

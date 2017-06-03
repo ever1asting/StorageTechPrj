@@ -1,7 +1,7 @@
 #define FUSE_USE_VERSION 26
 
-#include "ftp/service.h"
-#include "ftp/siftp.h"
+#include "service.h"
+#include "siftp.h"
 
 #include <fuse.h>
 #include <string.h>
@@ -114,7 +114,7 @@ static int open_callback(const char *path, struct fuse_file_info *fi) {
           }
           p -> isDownload = 1;
           // set file size
-          FILE *fp = fopen(p -> bufPath, "r");
+          FILE *fp = fopen(p -> bufPath, "rb");
           if(!fp) {
             printf("failed to open the file from \"%s\"\n", p -> bufPath);
             return 0;
@@ -236,7 +236,7 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 		p -> isDownload = 1;
 
 		// set file size
-		FILE *fp = fopen(p -> bufPath, "r");
+		FILE *fp = fopen(p -> bufPath, "rb");
 		if(!fp) {
 			printf("failed to open the file from \"%s\"\n", p -> bufPath);
 			return 0;
@@ -345,7 +345,7 @@ int write_callback(const char *path, const char *buf,
     strcpy(tempBufPath, bufBase);
     strcat(tempBufPath, path + 1);
 
-    FILE *fp = fopen(tempBufPath,"w+");
+    FILE *fp = fopen(tempBufPath,"wb");
     printf("write in buf path: %s\n", tempBufPath);
     if(!fp) {
         printf("failed to open %s\n", tempBufPath);
@@ -362,7 +362,16 @@ int write_callback(const char *path, const char *buf,
     }
     
     // modify fileList
-    add2list(fileInit(path + 1, size, 1));
+    struct file* p = fileList;
+    for (p; p != NULL; p = p -> next) {
+      if (strcmp(p -> name, path + 1) == 0) {
+        p -> isDownload = 1;
+        p -> size = size;
+        break;
+      }
+    }
+    if (p == NULL)
+      add2list(fileInit(path + 1, size, 1));
 
     printf("*** has write, size:%d offset:%d\n",(int)size, offset);
     

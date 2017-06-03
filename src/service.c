@@ -203,7 +203,7 @@ String service_readFile(const String a_path, int *ap_length)
 	// check perms
 	if(service_statTest(a_path, S_IFMT, S_IFREG))
 	{
-		if((p_fileFd = fopen(a_path, "r")) != NULL)
+		if((p_fileFd = fopen(a_path, "rb")) != NULL)
 		{
 			// determine file size
 				fseek(p_fileFd, 0, SEEK_END);
@@ -222,12 +222,22 @@ String service_readFile(const String a_path, int *ap_length)
 			// read contents into buffer
 				if(fread(buf, sizeof(char), *ap_length, p_fileFd) != *ap_length)
 				{
+
+
+
 					perror("readFile()");
 					fclose(p_fileFd);
 					
 					
 					free(buf);
 					buf = NULL;
+				}
+				else {
+					// printf("---------\nmycode\n------------\n");
+					// FILE * outfile;
+    	// 			outfile = fopen("aaaa.out", "wb");
+				 //    fwrite( buf, sizeof(char ), *ap_length, outfile );
+					// fclose(outfile);
 				}
 				
 			fclose(p_fileFd);
@@ -289,7 +299,7 @@ Boolean service_writeFile(const String a_path, const String a_data, const int a_
 	FILE* p_fileFd;
 	Boolean result = false;
 	
-	if((p_fileFd = fopen(a_path, "w")))
+	if((p_fileFd = fopen(a_path, "wb")))
 	{
 		if(fwrite(a_data, sizeof(char), a_length, p_fileFd) != -1)
 		{
