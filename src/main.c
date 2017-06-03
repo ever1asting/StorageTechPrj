@@ -114,7 +114,7 @@ static int open_callback(const char *path, struct fuse_file_info *fi) {
           }
           p -> isDownload = 1;
           // set file size
-          FILE *fp = fopen(p -> bufPath, "rb");
+          FILE *fp = fopen(p -> bufPath, "r");
           if(!fp) {
             printf("failed to open the file from \"%s\"\n", p -> bufPath);
             return 0;
@@ -236,7 +236,7 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
 		p -> isDownload = 1;
 
 		// set file size
-		FILE *fp = fopen(p -> bufPath, "rb");
+		FILE *fp = fopen(p -> bufPath, "r");
 		if(!fp) {
 			printf("failed to open the file from \"%s\"\n", p -> bufPath);
 			return 0;
@@ -338,22 +338,28 @@ int write_callback(const char *path, const char *buf,
  //   return 0;
 
     printf("-----------\nwrite\n--------------------\n");
-    printf("%s\n", path);
+    printf("path = %s\n", path);
+    printf("buf = %s\n");
 
     // write to bufPath
     char tempBufPath[1000];
     strcpy(tempBufPath, bufBase);
     strcat(tempBufPath, path + 1);
 
-    FILE *fp = fopen(tempBufPath,"wb");
-    printf("write in buf path: %s\n", tempBufPath);
-    if(!fp) {
-        printf("failed to open %s\n", tempBufPath);
-        return 0;
-    }
-    fseek(fp, offset, SEEK_SET);
-    size = fwrite(buf, sizeof(char), size, fp);
-    fclose(fp);
+    // FILE *fp = fopen(tempBufPath,"w");
+    // printf("write in buf path: %s\n", tempBufPath);
+    // if(!fp) {
+    //     printf("failed to open %s\n", tempBufPath);
+    //     return 0;
+    // }
+    // fseek(fp, offset, SEEK_SET);
+    // size = fwrite(buf, sizeof(char), size, fp);
+    // fclose(fp);
+    int fd = open(tempBufPath, O_WRONLY);
+    lseek(fd, offset, SEEK_SET);
+    int ret = write(fd, (void*)buf, size);
+    close(fd);
+
 
     // upload to server
     if (upload(path + 1, tempBufPath) == false) {
@@ -389,7 +395,11 @@ int create_callback(const char *path , mode_t mode, struct fuse_file_info *fi) {
             return -EEXIST;        
     }
 
-    add2list(fileInit(path + 1, 0, 0));
+    struct file* f = fileInit(path + 1, 0, 0);
+    add2list(f);
+    int ret = open(f -> bufPath, (int)mode | O_CREAT);
+    if (ret >= 0) 
+        close(ret);
 
     return 0;
 }
