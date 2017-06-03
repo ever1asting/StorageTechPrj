@@ -6,7 +6,7 @@
 **/
 
 #include "service.h"
-#include "siftp.h"
+#include "client.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -24,7 +24,7 @@
 // globals
  // char g_pwd[PATH_MAX+1]; // holds the path of current working directory
 
-Boolean service_create(char* g_pwd, int *ap_socket, const String a_serverName, const int a_serverPort)
+Boolean service_create(int *ap_socket, const String a_serverName, const int a_serverPort)
 {
 	// variables
 		struct sockaddr_in serverAddr;
@@ -68,7 +68,7 @@ Boolean service_create(char* g_pwd, int *ap_socket, const String a_serverName, c
 	return true;
 }
 
-Boolean session_create_client(char* g_pwd, const int a_socket)
+Boolean session_create_client(const int a_socket)
 {
 	// variables
 		Message msgOut, msgIn;

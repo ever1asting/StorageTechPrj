@@ -52,12 +52,15 @@ void add2list(struct file* f)
 // functions declaration
 struct file* fileInit(const char* filename, int size, int isDownload);
 Boolean download(char* name, char* path);
-
+void updateFileList();
 
 static int getattr_callback(const char *path, struct stat *stbuf) {
 	memset(stbuf, 0, sizeof(struct stat));
 
   	if (strcmp(path, "/") == 0) {
+      // when access root, update fileList
+      // updateFileList();
+
     	stbuf->st_mode = S_IFDIR | 0755;
     	stbuf->st_nlink = 2;
     	return 0;
@@ -250,17 +253,7 @@ static int read_callback(const char *path, char *buf, size_t size, off_t offset,
   lseek(fd, offset, SEEK_SET);
   int ret = read(fd, (void*)buf, size);
   close(fd);
-/*
-	FILE *fp = fopen(p -> bufPath, "r");
-	if(!fp) {
-		printf("failed to open the file from \"%s\"\n", p -> bufPath);
-		return 0;
-	}
 
-	fseek(fp, offset, SEEK_SET);
-	size = fread(buf, sizeof(char), p -> size, fp);
-	fclose(fp);
-*/
 	printf("*** has read %d offset:%d size:%d\n", (int)size, offset, p -> size);
 	
 	return size;
@@ -392,6 +385,16 @@ int create_callback(const char *path , mode_t mode, struct fuse_file_info *fi) {
     return 0;
 }
 
+int opendir_callback(const char *path, struct fuse_file_info *fi) {
+    printf("-------\nopendir, %s\n---------\n");
+
+    if (strcmp(path, "/") == 0) {
+      updateFileList();
+    }
+
+    return 0;
+}
+
 static struct fuse_operations fuse_example_operations = {
   .getattr = getattr_callback,
   .open = open_callback,
@@ -399,6 +402,7 @@ static struct fuse_operations fuse_example_operations = {
   .readdir = readdir_callback,
   .create = create_callback,
   .write = write_callback,
+  .opendir = opendir_callback,
 };
 
 struct file* fileInit(const char* filename, int size, int isDownload)
@@ -611,18 +615,11 @@ int split(char** dst, char* str, const char* spl)
     return n;
 }
 
-int main(int argc, char *argv[])
+void updateFileList()
 {
-    // init socket 
-    int a_argc = 3;
-    char *ap_argv[] = {"client", "127.0.0.1", "11800"};
-    m_socket = clientInit(a_argc, ap_argv);
-    if (m_socket == -1) {
-      printf("create socket fail\n");
-      exit(-1);
-    }
+    fileList = NULL;
 
-    // init vars
+  // init vars
     int i;
     char** filenameList = malloc(512 * sizeof(char*));
     for (i = 0; i < 512; ++i)
@@ -685,13 +682,25 @@ int main(int argc, char *argv[])
     }
    // printf("break pt 1\n");
 
-  	struct file* p = fileList;
-  	for (p; p != NULL; p = p -> next) {
-    		printf("file: %s, filepath = %s, bufpath = %s, size = %d, isDownload = %d\n",
-    			p -> name, p -> filePath, p -> bufPath, p -> size, p -> isDownload);
-  	}
+    struct file* p = fileList;
+    for (p; p != NULL; p = p -> next) {
+        printf("file: %s, filepath = %s, bufpath = %s, size = %d, isDownload = %d\n",
+          p -> name, p -> filePath, p -> bufPath, p -> size, p -> isDownload);
+    }
+}
 
+int main(int argc, char *argv[])
+{
+    // init socket 
+    int a_argc = 3;
+    char *ap_argv[] = {"client", "127.0.0.1", "11800"};
+    m_socket = clientInit(a_argc, ap_argv);
+    if (m_socket == -1) {
+      printf("create socket fail\n");
+      exit(-1);
+    }
 
+    updateFileList();
 
 
     // destroy session
