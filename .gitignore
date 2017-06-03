@@ -4,3 +4,7 @@ fuse-3.0.1
 fuse-3.0.1.tar.gz
 learn
 src/buffuse
+src/main
+*.o
+src/tempFolder
+src/ftpLib/ServerFolder
