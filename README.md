@@ -21,4 +21,6 @@
  - cd src/ftpLib, make -> Server
  - cd src, make -> client
  - to run the server, in ftpLib folder, `./siftpd <Server Folder> <Port Number>`
- - to run the client, in src folder, `./main <Mount Folder>`, and add parameter [-d] for debug 
+ - to run the client, in src folder, `./main <Mount Folder>`, and add parameter [-d] for debug
+ - make sure <Server Folder> and <Mount Folder> exit before programs run
+ - DO NOT OPERATE TOO FAST
